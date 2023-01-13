@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
             fgMask = cv2.blur(frame,(5,5))
             fgMask = backSub.apply(fgMask)
-            fgMask = cv2.dilate(fgMask, np.ones((5, 5), np.uint8), iterations=2)
+            fgMask = cv2.dilate(fgMask, np.ones((5, 5), np.uint8), iterations=3)
             fgMask= cv2.erode(fgMask, np.ones((5, 5), np.uint8), iterations=2)
 
 
