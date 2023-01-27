@@ -38,6 +38,26 @@ def obtain_centers(img_thresh):
             rois.append(cv2.boundingRect(contour))
     return centers, rois
 
+
+def print_rois(rois, frame):
+    tmp = frame.copy()
+    for (x,y,w,h) in rois:
+        cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
+    return frame
+
+identifier = 0
+
+def generate_entity(bbox):
+    id = identifier
+    identifier+=1
+
+    return {
+        'id': id,
+        'previous': bbox,
+        'current' :  bbox,
+        'kM': kalman.KalmanObject(0.1, 1, 1, 1, 0.1,0.1)
+    }
+
 # Cuando obtenga las rois, las comprobaremos todas con los resultados anteriores, y miraremos cual esta más
 # cerca del señor del frame anterior
 
@@ -50,17 +70,38 @@ def obtain_rois(frame, backSub):
         THIS METHOD WILL NOT DETECT THE BALL,
         THE BALL NEED TO BE FURTHER PROCESED.
     """
-    fgMask = cv2.blur(frame, (12, 12))
+
+    fgMask = cv2.blur(frame, (15, 15))
     fgMask = backSub.apply(fgMask)  # real
-    fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=2)
-    fgMask = cv2.erode(fgMask, np.ones((5, 5), np.uint8), iterations=2)
+    fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=5)
+    fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=1)
+    #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=3)
     ret, fgMask = cv2.threshold(fgMask, 50, 255, cv2.THRESH_BINARY)
-    return fgMask
 
-    
+    # Find contours
+    contours, _ = cv2.findContours(fgMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    height, width = fgMask.shape
+    min_x, min_y = width, height
+    max_x = max_y = 0
+
+    rois = []
+    for contour in contours:
+        (x,y,w,h) = cv2.boundingRect(contour)
+        min_x, max_x = min(x, min_x), max(x+w, max_x)
+        min_y, max_y = min(y, min_y), max(y+h, max_y)
+        if w > 45 and h > 45:
+            cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
+            rois.append(cv2.boundingRect(contour))
+
+    # we need the rois
+    # return rois
+    return rois
 
 if __name__ == "__main__":
+    first = True
+
+
     parser = argparse.ArgumentParser(description='This program shows how to use background subtraction methods provided by \
                                                 OpenCV. You can process both videos and images.')
     parser.add_argument('--input', type=str, help='Path to a video or a sequence of image.', default='video_cut.mp4')
@@ -88,7 +129,25 @@ if __name__ == "__main__":
         # Capture frame-by-frame
         ret, frame = cap.read()
         if ret == True:
-            fgMask = obtain_rois(frame, backSub)
+            rois = obtain_rois(frame, backSub)
+            
+            # Si hay rois 
+            if rois:
+                # Si es la primera vez que cogemos las rois
+                    # generamos cada una de las rois como una entidad
+                
+
+
+
+                # si es la primera deteccion
+                if first:
+                    
+                    
+
+            generate_entity()
+            #fgMask = print_rois(rois=rois, frame=frame)
+
+            
             #fgMask = cv2.blur(frame,(10, 10))
             #fgMask = backSub.apply(fgMask) # real
             #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=2)
