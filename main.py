@@ -38,6 +38,26 @@ def obtain_centers(img_thresh):
             rois.append(cv2.boundingRect(contour))
     return centers, rois
 
+# Cuando obtenga las rois, las comprobaremos todas con los resultados anteriores, y miraremos cual esta más
+# cerca del señor del frame anterior
+
+def obtain_rois(frame, backSub):
+    """
+        Binarize as much as posible the two players,
+        with this method I want the bigger chunks to
+        be noticeable, the ball will disapear.
+
+        THIS METHOD WILL NOT DETECT THE BALL,
+        THE BALL NEED TO BE FURTHER PROCESED.
+    """
+    fgMask = cv2.blur(frame, (12, 12))
+    fgMask = backSub.apply(fgMask)  # real
+    fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=2)
+    fgMask = cv2.erode(fgMask, np.ones((5, 5), np.uint8), iterations=2)
+    ret, fgMask = cv2.threshold(fgMask, 50, 255, cv2.THRESH_BINARY)
+    return fgMask
+
+    
 
 
 if __name__ == "__main__":
@@ -45,13 +65,16 @@ if __name__ == "__main__":
                                                 OpenCV. You can process both videos and images.')
     parser.add_argument('--input', type=str, help='Path to a video or a sequence of image.', default='video_cut.mp4')
     parser.add_argument('--substractor', type=str, help='Background subtraction method (KNN, MOG2).', default='MOG2')
+    #parser.add_argument('--vid', type=str, help='Video selection.', default='video_cut.mp4')
     
     args = parser.parse_args()
     filename  = args.input
 
     if args.substractor == 'MOG2':
+        print("%s selected" % args.substractor)
         backSub = cv2.createBackgroundSubtractorMOG2()
     else:
+        print("%s selected" % args.substractor)
         backSub = cv2.createBackgroundSubtractorKNN()
 
     cap = cv2.VideoCapture(filename)
@@ -65,19 +88,26 @@ if __name__ == "__main__":
         # Capture frame-by-frame
         ret, frame = cap.read()
         if ret == True:
+            fgMask = obtain_rois(frame, backSub)
+            #fgMask = cv2.blur(frame,(10, 10))
+            #fgMask = backSub.apply(fgMask) # real
+            #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=2)
+            #fgMask= cv2.erode(fgMask, np.ones((5, 5), np.uint8), iterations=2)
 
-            fgMask = cv2.blur(frame,(5,5))
-            fgMask = backSub.apply(fgMask)
-            fgMask = cv2.dilate(fgMask, np.ones((5, 5), np.uint8), iterations=5)
-            fgMask= cv2.erode(fgMask, np.ones((5, 5), np.uint8), iterations=5)
-            ret, fgMask = cv2.threshold(fgMask, 220, 255, cv2.THRESH_BINARY)
-            
+            #ret, fgMask = cv2.threshold(fgMask, 50, 255, cv2.THRESH_BINARY)
+
+            #fgMask = cv2.adaptiveThreshold(fgMask, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, \
+            #                           cv2.THRESH_BINARY_INV, 11, 2)
+
+            #fgMask = backSub.apply(fgMask)
+
+
             # Roudimentary detection
-            centers, rois = obtain_centers(fgMask)
+            #centers, rois = obtain_centers(fgMask)
 
-            
             # If centroids are detected then track them
-            if (len(centers) > 0):
+            if False:
+            #if (len(centers) > 0):
 
                 # Draw the detected circle
                 cv2.circle(frame, (int(centers[0][0]), int(centers[0][1])), 10, (0, 191, 255), 2)
@@ -97,13 +127,13 @@ if __name__ == "__main__":
                 cv2.putText(frame, "Predicted Position", (int(x + 15), int(y)), 0, 0.5, (255, 0, 0), 2)
                 cv2.putText(frame, "Measured Position", (int(centers[0][0] + 15), int(centers[0][1] - 15)), 0, 0.5, (0,191,255), 2)
 
-                # Display the resulting frame
-                cv2.imshow('Frame',frame)
-                #cv2.imshow('FG Mask', fgMask)
+            # Display the resulting frame
+            #cv2.imshow('Frame',frame)
+            cv2.imshow('FG Mask', fgMask)
 
-                # Press Q on keyboard to  exit
-                if cv2.waitKey(15) & 0xFF == ord('q'):
-                    break
+            # Press Q on keyboard to  exit
+            if cv2.waitKey(15) & 0xFF == ord('q'):
+                break
         # Break the loop
         else: 
             print("Closing preview")
