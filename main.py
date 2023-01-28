@@ -6,19 +6,21 @@ import kalman
 import argparse
 import detector
 
+from scipy.optimize import linear_sum_assignment
+
+
+
 print(detector.BALL_MODE)
 
 valor = 242
 identifier = 0
 
-def obtain_centers(img_thresh):
+def obtain_centers(img_thresh, min_radius_thresh= 3, max_radius_thresh= 30):
+
     # Find contours
     contours, _ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # Set the accepted minimum & maximum radius of a detected object
-    min_radius_thresh= 3
-    max_radius_thresh= 30   
-
     centers= []
     for c in contours:
         # ref: https://docs.opencv.org/trunk/dd/d49/tutorial_py_contour_features.html
@@ -62,9 +64,6 @@ def generate_entity(bbox, identifier):
         'kM': kalman.KalmanObject(0.1, 1, 1, 1, 0.1, 0.1)
     }
 
-
-
-
 # Cuando obtenga las rois, las comprobaremos todas con los resultados anteriores, y miraremos cual esta más
 # cerca del señor del frame anterior
 def obtain_rois(frame, backSub):
@@ -83,6 +82,8 @@ def obtain_rois(frame, backSub):
     fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=1)
     #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=3)
     ret, fgMask = cv2.threshold(fgMask, 50, 255, cv2.THRESH_BINARY)
+
+    return fgMask
 
     # Find contours
     contours, _ = cv2.findContours(fgMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -104,33 +105,46 @@ def obtain_rois(frame, backSub):
     # return rois
     return rois
 
-def print_a():
-    print(valor)
 
 def calibration_mask(vid):
-
     if vid=='vid2.mp4':
         return cv2.imread('vid2_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
     else:
         return cv2.imread('video_cut_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
 
 
-def players_det(frame, backSub):
-    """
-        Binarize as much as posible the two players,
-        with this method I want the bigger chunks to
-        be noticeable, the ball will disapear.
+def get_rois(frame, cal, backSub):
 
-        THIS METHOD WILL NOT DETECT THE BALL,
-        THE BALL NEED TO BE FURTHER PROCESED.
-    """
-    fgMask = cv2.blur(frame, (15, 15))
+    fgMask = frame
+    #fgMask = cv2.cvtColor(fgMask, cv2.COLOR_BGR2GRAY)
+    #fgMask = cv2.equalizeHist(fgMask)
+    fgMask = cv2.blur(fgMask, (8, 8))
+
+    fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
     fgMask = backSub.apply(fgMask)  # real
-    fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=5)
-    fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=1)
-    #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=3)
-    ret, fgMask = cv2.threshold(fgMask, 50, 255, cv2.THRESH_BINARY)
-    return fgMask 
+
+    fgMask = cv2.erode(fgMask, np.ones((2, 1), np.uint8), iterations=3)
+    fgMask = cv2.dilate(fgMask, np.ones((7, 7), np.uint8), iterations=2)
+    
+    fgMask = cv2.dilate(fgMask, np.ones((10, 10), np.uint8), iterations=2)
+    ret, fgMask = cv2.threshold(fgMask, 150, 200, cv2.THRESH_BINARY)
+
+    contours, _ = cv2.findContours(fgMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    height, width = fgMask.shape
+    min_x, min_y = width, height
+    max_x = max_y = 0
+
+    rois = []
+    for contour in contours:
+        (x,y,w,h) = cv2.boundingRect(contour)
+        min_x, max_x = min(x, min_x), max(x+w, max_x)
+        min_y, max_y = min(y, min_y), max(y+h, max_y)
+        #if w > 45 and h > 45 :#or 25 < w < 35 and 25 < h < 35:
+        cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
+        rois.append(cv2.boundingRect(contour))
+        
+    return rois
 
 
 def main():
@@ -158,66 +172,67 @@ def main():
 
     cal = calibration_mask(filename)
 
-    #KF = kalman.KalmanObject(0.1, 1, 1, 1, 0.1,0.1)
-    #player1KF = kalman.KalmanObject(0.1, 1, 1, 1, 0.1,0.1)
-    #player2KF = kalman.KalmanObject(0.1, 1, 1, 1, 0.1,0.1)
+    # Create a list to store the Kalman filters for each object
+    kf_list = []
+
+    # Read the first frame of the video
+    ret, frame = cap.read()
+
+    # Get the bounding box coordinates for all objects in the first frame
+    bounding_boxes = get_rois(frame, cal, backSub)
+
+    # Create a Kalman filter for each object and add it to the list
+    for box in bounding_boxes:
+        kf = cv2.KalmanFilter(4, 2)
+        kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+        kf.transitionMatrix = np.array([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+        kf.processNoiseCov = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32) * 0.03
+        kf_list.append(kf)
+
+
 
     # Read until video is completed
     while(cap.isOpened()):
         # Capture frame-by-frame
         ret, frame = cap.read()
 
-        if ret == True:
-
-            fgMask = frame
-            #fgMask = cv2.cvtColor(fgMask, cv2.COLOR_BGR2GRAY)
-            #fgMask = cv2.equalizeHist(fgMask)
-            fgMask = cv2.blur(fgMask, (8, 8))
-
-            fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
-            fgMask = backSub.apply(fgMask)  # real
-            
-            fgMask = cv2.dilate(fgMask, np.ones((7, 7), np.uint8), iterations=2)
-            fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=4)
-            fgMask = cv2.dilate(fgMask, np.ones((10, 10), np.uint8), iterations=2)
-        
-            ret, fgMask = cv2.threshold(fgMask, 150, 200, cv2.THRESH_BINARY)
-            cv2.imshow('FG', fgMask)
-
-            #fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=2)
-            #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=5)
-            #fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=1)
-
-            contours, _ = cv2.findContours(fgMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            height, width = fgMask.shape
-            min_x, min_y = width, height
-            max_x = max_y = 0
-
-            rois = []
-            for contour in contours:
-                (x,y,w,h) = cv2.boundingRect(contour)
-                min_x, max_x = min(x, min_x), max(x+w, max_x)
-                min_y, max_y = min(y, min_y), max(y+h, max_y)
-                if w > 45 and h > 25 :#or 25 < w < 35 and 25 < h < 35:
-                    cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
-                    rois.append(cv2.boundingRect(contour))
-
-            fgMask = print_rois(rois=rois, frame=frame)
-
-            # para detectar la pelota puedo mirar cual 
-
-            # Display the resulting frame
-            #cv2.imshow('Frame',frame)
-            #cv2.imshow('FG Mask', fgMask)
-
-            # Press Q on keyboard to  exit
-            if cv2.waitKey(10) & 0xFF == ord('q'):
-                break
-        # Break the loop
-        else: 
-            print("Closing preview")
+        if not ret:
             break
+
+        bounding_boxes = get_rois(frame, cal, backSub)
+
+        # Loop through all the Kalman filters
+        for i, kf in enumerate(kf_list):
+            # Get the current bounding box
+            box = bounding_boxes[i]
+
+            # Predict the object's location
+            predicted_state = kf.predict()
+
+            # Update the Kalman filter with the measured position
+            kf.correct(np.array([[np.float32(box[0])], [np.float32(box[1])]]))
+
+            # Draw the bounding box on the frame
+            x, y, w, h = box
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+        # Show the frame
+        cv2.imshow("Tracking", frame)
+
+        #fgMask = print_rois(rois=rois, frame=frame)
+        
+        #cv2.imshow('FG', fgMask)
+        
+        # para detectar la pelota puedo mirar cual 
+
+        # Display the resulting frame
+        #cv2.imshow('Frame',frame)
+        #cv2.imshow('FG Mask', fgMask)
+
+        # Press Q on keyboard to  exit
+        if cv2.waitKey(10) & 0xFF == ord('q'):
+            break
+
 
     # When everything done, release the video capture object
     cap.release()
