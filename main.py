@@ -135,7 +135,7 @@ def main():
 
     
     cap = cv2.VideoCapture(filename)
-    
+
     cal = calibration_mask(filename)
 
     #KF = kalman.KalmanObject(0.1, 1, 1, 1, 0.1,0.1)
@@ -148,53 +148,32 @@ def main():
         # Capture frame-by-frame
         ret, frame = cap.read()
         if ret == True:
-            #rois = obtain_rois(frame, backSub)
-            #image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            #lower = np.array([22, 93, 0], dtype="uint8")
-            #lower = np.array([74,84,66], dtype="uint8")
-            
-            #upper = np.array([45, 255, 255], dtype="uint8")
-            #upper = np.array([10,84,95], dtype="uint8")
-
-            # delete yelloish background
-            #lower = np.array([22, 93, 0])
-            #upper = np.array([100, 255, 255])
-            #fgMask = cv2.inRange(image, lower, upper)
-
-            #lower = np.array([3, 30, 20])
-            #upper = np.array([50, 70, 255])
-            #fgMask = cv2.inRange(image, lower, upper)
-
-            # Convert it to gray
-
-            fgMask = cv2.blur(frame, (10, 10))
+            #frame =  cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            #frame = cv2.resize(frame, dsize=(600, 600), interpolation=cv2.INTER_CUBIC)
+            #cal = cv2.resize(cal, dsize=(600, 600), interpolation=cv2.INTER_CUBIC)
+            fgMask = frame
+            fgMask = cv2.blur(frame, (5, 5))
             fgMask = backSub.apply(fgMask)  # real
+            cv2.imshow('FG Mask', fgMask)
 
-            
             fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=3)
             fgMask = cv2.erode(fgMask, np.ones((3, 3), np.uint8), iterations=1)
-            #fgMask = cv2.dilate(fgMask, np.ones((3, 3), np.uint8), iterations=3)
             
-
             fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
             ret, fgMask = cv2.threshold(fgMask, 50, 255, cv2.THRESH_BINARY)
 
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
             # delete yelloish background
-            lower = np.array([10, 93, 0])
-            upper = np.array([100, 255, 255])
-            mask_background = cv2.inRange(image, lower, upper)
-            mask_background = cv2.bitwise_not(mask_background)
+            #lower = np.array([10, 93, 0])
+            #upper = np.array([100, 255, 255])
+            #mask_background = cv2.inRange(image, lower, upper)
+            #mask_background = cv2.bitwise_not(mask_background)
             #fgMask = cv2.bitwise_and(fgMask, fgMask, mask = mask_background)
-            fgMask = cv2.dilate(fgMask, np.ones((1, 1), np.uint8), iterations=1)
+            #fgMask = cv2.dilate(fgMask, np.ones((1, 1), np.uint8), iterations=1)
             
 
-
-
-            #fgMask = cv2.inRange()
             contours, _ = cv2.findContours(fgMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
             height, width = fgMask.shape
             min_x, min_y = width, height
             max_x = max_y = 0
@@ -204,12 +183,17 @@ def main():
                 (x,y,w,h) = cv2.boundingRect(contour)
                 min_x, max_x = min(x, min_x), max(x+w, max_x)
                 min_y, max_y = min(y, min_y), max(y+h, max_y)
-                if w > 45 and h > 45:
-                    cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
-                    rois.append(cv2.boundingRect(contour))
-
+                #if w > 40 and h > 45:
+                cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
+                rois.append(cv2.boundingRect(contour))
 
             fgMask = print_rois(rois=rois, frame=frame)
+
+
+
+            #lower = np.array([0, 40, 100])
+            #upper = np.array([200, 255, 145])
+            #fgMask = cv2.inRange(image, lower, upper)
 
             
             #fgMask = cv2.blur(frame,(10, 10))
@@ -252,7 +236,7 @@ def main():
 
             # Display the resulting frame
             #cv2.imshow('Frame',frame)
-            cv2.imshow('FG Mask', fgMask)
+            #cv2.imshow('FG Mask', fgMask)
 
             # Press Q on keyboard to  exit
             if cv2.waitKey(10) & 0xFF == ord('q'):
