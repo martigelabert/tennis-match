@@ -65,8 +65,6 @@ def main():
 
     cal = calibration_mask(filename)
 
-
-
     # Create a list to store the Kalman filters for each object
     kf_list = []
 

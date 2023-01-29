@@ -8,8 +8,6 @@ import detector
 
 from scipy.optimize import linear_sum_assignment
 
-
-
 print(detector.BALL_MODE)
 
 valor = 242
