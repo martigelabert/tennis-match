@@ -189,8 +189,6 @@ def main():
         kf.processNoiseCov = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32) * 0.03
         kf_list.append(kf)
 
-
-
     # Read until video is completed
     while(cap.isOpened()):
         # Capture frame-by-frame
@@ -199,23 +197,35 @@ def main():
         if not ret:
             break
 
-        bounding_boxes = get_rois(frame, cal, backSub)
+        new_bounding_boxes = get_rois(frame, cal, backSub)
 
-        # Loop through all the Kalman filters
-        for i, kf in enumerate(kf_list):
-            # Get the current bounding box
-            box = bounding_boxes[i]
+        # Use Hungarian algorithm to match the bounding boxes between frames
+        cost_matrix = np.zeros((len(bounding_boxes), len(new_bounding_boxes)))
+        for i in range(len(bounding_boxes)):
+            for j in range(len(new_bounding_boxes)):
+                cost_matrix[i, j] = np.linalg.norm(np.array(bounding_boxes[i]) - np.array(new_bounding_boxes[j]))
 
-            # Predict the object's location
+        # just getting the distance
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+        # Update the Kalman filter for each matched object
+        for i, j in zip(row_ind, col_ind):
+            kf = kf_list[i]
+            box = new_bounding_boxes[j]
             predicted_state = kf.predict()
-
-            # Update the Kalman filter with the measured position
             kf.correct(np.array([[np.float32(box[0])], [np.float32(box[1])]]))
 
             # Draw the bounding box on the frame
             x, y, w, h = box
             cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
+            # Draw the Kalman filter's predicted position on the frame
+            x, y = int(predicted_state[0]), int(predicted_state[1])
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 0), 2)
+
+
+
+        #bounding_boxes = new_bounding_boxes
         # Show the frame
         cv2.imshow("Tracking", frame)
 
