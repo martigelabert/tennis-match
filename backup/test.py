@@ -5,9 +5,13 @@ from time import sleep
 import kalman
 import argparse
 import detector
-import sort
 
 from scipy.optimize import linear_sum_assignment
+
+print(detector.BALL_MODE)
+
+valor = 242
+identifier = 0
 
 def print_rois(rois, frame):
     tmp = frame.copy()
@@ -15,16 +19,19 @@ def print_rois(rois, frame):
         cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
     return frame
 
+
 def calibration_mask(vid):
     if vid=='vid2.mp4':
         return cv2.imread('vid2_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
     else:
         return cv2.imread('video_cut_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
 
+
 def get_rois(frame, cal, backSub):
 
     fgMask = frame
-
+    #fgMask = cv2.cvtColor(fgMask, cv2.COLOR_BGR2GRAY)
+    #fgMask = cv2.equalizeHist(fgMask)
     fgMask = cv2.blur(fgMask, (8, 8))
 
     fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
@@ -53,8 +60,10 @@ def get_rois(frame, cal, backSub):
         
     return rois
 
+
 def main():
     first = True
+
 
     parser = argparse.ArgumentParser(description='This program shows how to use background subtraction methods provided by \
                                                 OpenCV. You can process both videos and images.')
@@ -127,6 +136,8 @@ def main():
             # Draw the Kalman filter's predicted position on the frame
             x, y = int(predicted_state[0]), int(predicted_state[1])
             cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 0), 2)
+
+
 
         #bounding_boxes = new_bounding_boxes
         # Show the frame
