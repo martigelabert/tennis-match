@@ -179,15 +179,9 @@ def temporal_coherence(box, rois, ignore=[], frame = [], debug = 0, th = 0.3):
     for r in rois:
         scores.append(iou(box, r))
     scores = np.array(scores)
-    #print(scores)
 
     ideal = np.argmax(scores)
     
-    #return ideal, rois[np.argmax(scores)]
-                    #a = cv2.selectROI(frame)
-                    
-                    #entities.append(Enitity(box_current))
-                    #delete.append() 
     found = False
     i = 0 
     while(not(found)) and i < len(rois):
@@ -239,20 +233,21 @@ def get_rest_of_rois(rois_matched, image_th):
         #cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
         r.append(cv2.boundingRect(contour))
 
-    #print(len(rois))
     return r, ball_image
 
 def main():
-    entities = []
-    first = True
 
+    # The players
+    entities = []
+
+    # The ball (entity that will contain the possible ball)
     ball = []
 
-    parser = argparse.ArgumentParser(description='This program shows how to use background subtraction methods provided by \
-                                                OpenCV. You can process both videos and images.')
+    parser = argparse.ArgumentParser(description='This program shows how to use background subtraction and kalman filters  \
+                                                  methods provided by \
+                                                  OpenCV. You can process videos and images.')
     parser.add_argument('--input', type=str, help='Path to a video or a sequence of image.', default='video_cut.mp4')
-    parser.add_argument('--substractor', type=str, help='Background subtraction method (KNN, MOG2).', default='MOG2')
-    #parser.add_argument('--vid', type=str, help='Video selection.', default='video_cut.mp4')
+    parser.add_argument('--substractor', type=str, help='Background subtraction method (KNN, MOG2).', default='KNN')
     
     args = parser.parse_args()
     filename  = args.input
@@ -296,13 +291,8 @@ def main():
         i+=1
         entities.append(Enitity(box, player=i))
 
-    prev_bbox = []
-    # Read until video is completed
-
     # las player that hitted the ball
     last = 0
-
-    prev = []
     while(cap.isOpened()):
         # Capture frame-by-frame
         ret, frame = cap.read()
@@ -479,7 +469,6 @@ def main():
         #if len(entities) > 2:
         #    print("Player overflow")
        
-        prev_bbox = new_bboxes
 
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
