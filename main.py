@@ -221,7 +221,7 @@ def get_rest_of_rois(rois_matched, image_th):
     #fgMask = cv2.erode(ball_image, np.ones((5,5), np.uint8), iterations=3)
 
     contours, _ = cv2.findContours(ball_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cv2.imshow("patata", ball_image)
+    
     r = []
     for contour in contours:
         #if w > 45 and h > 45 or 25 < w < 35 and 25 < h < 35:
@@ -470,8 +470,10 @@ def main():
             cv2.imshow("General", image_th)
         elif mode == 2:
             cv2.imshow("Ball", ball_image)
+        elif mode == 3: # no display
+            pass
 
-        #tracking_video.appen(frame)
+        #tracking_video.append(frame)
         #general_video.append(image_th)
         #ball_video.append(ball_image)
 
@@ -486,6 +488,15 @@ def main():
             break
 
     print("The Winner is player %i" % last)
+
+    # If you need to save the video enable this
+    if False:
+        height,width, _ =tracking_video[0].shape
+
+        video=cv2.VideoWriter('videos_gen/video.mp4',cv2.VideoWriter_fourcc(*'mp4v'),30,(width,height))
+        #video=cv2.VideoWriter(output_filename, fourcc, fps, self._window_shape)
+        for i in tracking_video:
+            video.write(i)
 
     # release video capture
     cap.release()
