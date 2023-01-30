@@ -232,6 +232,10 @@ def get_rest_of_rois(rois_matched, image_th):
 
 def main():
 
+    tracking_video = []
+    general_video = []
+    ball_video = []
+
     # The players
     entities = []
 
@@ -243,9 +247,11 @@ def main():
                                                   OpenCV. You can process videos and images.')
     parser.add_argument('--input', type=str, help='Path to a video or a sequence of image.', default='video_cut.mp4')
     parser.add_argument('--substractor', type=str, help='Background subtraction method (KNN, MOG2).', default='KNN')
+    parser.add_argument('--mode', type=int, help='Background subtraction method (KNN, MOG2).', default=0)
     
     args = parser.parse_args()
     filename  = args.input
+    mode = args.mode
 
     if args.substractor == 'MOG2':
         print("%s selected" % args.substractor)
@@ -457,10 +463,17 @@ def main():
             y+=40
             cv2.putText(frame, "Player %i scores -> %i" % (i.player, i.hit), (x, y+10), cv2.FONT_HERSHEY_SIMPLEX, 1, 4)
 
-        #cv2.imshow("Tracking", frame)
-        #cv2.imshow("General", image_th)
-        cv2.imshow("Ball", ball_image)
-        
+
+        if mode == 0:
+            cv2.imshow("Tracking", frame)
+        elif mode == 1:
+            cv2.imshow("General", image_th)
+        elif mode == 2:
+            cv2.imshow("Ball", ball_image)
+
+        #tracking_video.appen(frame)
+        #general_video.append(image_th)
+        #ball_video.append(ball_image)
 
         entities = [i for j, i in enumerate(entities) if j not in delete]
 
