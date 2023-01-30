@@ -3,6 +3,8 @@ import cv2
 import os
 from time import sleep
 
+import matplotlib.pyplot as plt
+
 import argparse
 import random
 
@@ -62,6 +64,7 @@ def get_rois(frame, cal, backSub):
 
     fgMask = frame
 
+
     # original
     fgMask = cv2.blur(fgMask, (8, 8))
     #fgMask = cv2.blur(fgMask, (15, 15))
@@ -70,23 +73,28 @@ def get_rois(frame, cal, backSub):
 
     fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
 
+    
 
     #origina
     fgMask = cv2.erode(fgMask, np.ones((2, 1), np.uint8), iterations=3)
     fgMask = cv2.dilate(fgMask, np.ones((7, 7), np.uint8), iterations=2)
     
     fgMask = cv2.dilate(fgMask, np.ones((10, 10), np.uint8), iterations=2)
-    ret, fgMask = cv2.threshold(fgMask, 150, 200, cv2.THRESH_BINARY)
+
+    # this is new, seems interesting
+    fgMask = cv2.erode(fgMask, np.ones((5,5), np.uint8), iterations=3)
+    fgMask = cv2.dilate(fgMask, np.ones((7, 7), np.uint8), iterations=2)
+
+    ret, fgMask = cv2.threshold(fgMask, 170, 200, cv2.THRESH_BINARY)
     #fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
 
     #ball = fgMask.copy()
     #ball = cv2.bitwise_and(fgMask, ball, mask = b_mask)
     #cv2.imshow('Blue Detector', ball) # to display the blue object output
 
-
-
     contours, _ = cv2.findContours(fgMask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+    
     height, width = fgMask.shape
     min_x, min_y = width, height
     max_x = max_y = 0
@@ -99,7 +107,7 @@ def get_rois(frame, cal, backSub):
         #if w > 45 and h > 45 or 25 < w < 35 and 25 < h < 35:
         #cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
         rois.append(cv2.boundingRect(contour))
-        
+    
     return rois, fgMask
 
 # Code extracted from
@@ -178,10 +186,34 @@ def calibration_mask(vid):
         img[:90][:] = 0
         return img
 
+# ahora que tengo a los wachos, los borro de la imagen
+def get_rest_of_rois(rois_matched, image_th):
+
+    ball_image = image_th.copy()
+
+    for (x,y,w,h) in rois_matched:
+        cv2.rectangle(ball_image, (x,y), (x+w,y+h), (0, 0, 0), -1)
+
+    #fgMask = cv2.erode(ball_image, np.ones((5,5), np.uint8), iterations=3)
+
+    contours, _ = cv2.findContours(ball_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.imshow("patata", ball_image)
+    r = []
+    for contour in contours:
+        #if w > 45 and h > 45 or 25 < w < 35 and 25 < h < 35:
+        #cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
+        r.append(cv2.boundingRect(contour))
+
+    #print(len(rois))
+    return r, ball_image
+
+
 
 def main():
     entities = []
     first = True
+
+    ball = []
 
     parser = argparse.ArgumentParser(description='This program shows how to use background subtraction methods provided by \
                                                 OpenCV. You can process both videos and images.')
@@ -206,6 +238,7 @@ def main():
 
     # Read the first frame of the video
     ret, frame = cap.read()
+
 
     _ = get_rois(frame, cal, backSub)
 
@@ -237,66 +270,117 @@ def main():
         if not ret:
             break
         
-        #[122,15,89]
 
-
-        #into_hsv =cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
-        # changing the color format from BGr to HSV 
-        # This will be used to create the mask
-        #L_limit=np.array([10,0,10]) # setting the blue lower limit
-        #U_limit=np.array([100,100,255]) # setting the blue upper limit
-            
-    
-        #b_mask=cv2.inRange(into_hsv,L_limit,U_limit)
-        # creating the mask using inRange() function
-        # this will produce an image where the color of the objects
-        # falling in the range will turn white and rest will be black
-        #blue=cv2.bitwise_and(frame,frame,mask=b_mask)
-        # this will give the color to mask.
-        #cv2.imshow('Original',frame) # to display the original frame
-        #cv2.imshow('Blue Detector',b_mask) # to display the blue object output
-
-        new_bboxes, _ = get_rois(frame, cal, backSub)
-
-        #print(track_bbs_ids.shape)
-        #cv2.putText(frame, str(i[4]), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+        new_bboxes, image_th = get_rois(frame, cal, backSub)
 
         
-        if True:
-            matched = []
 
-            clean = frame.copy()
-            #print(matched)
+        matched = []
+        assigned = []
+        delete = []
 
-            assigned = []
-            delete = []
+        clean = frame.copy()
 
+        # assign first players
+        for j in range(len(entities)):
+            (x,y,w,h) = entities[j].current
+            # I will just ignore tiny predictions
+            if w > 50 and h > 50:
+                th=0.5
+                # miro si hay alguna bounding box que quiera ser como esta
+                index, box_current = temporal_coherence(entities[j].current, new_bboxes, assigned, th=th)
+                
+                # si no la encuentro mira de usar una prediccion
+                if index== -1:
+                    break
+                    pred_bbox = entities[j].predict_bbox()
+                    index, box_current = temporal_coherence(pred_bbox, new_bboxes, assigned, th=th)
+
+                # si no la encuentro mira de usar la última posicion
+                if index== -1:
+                    index, box_current = temporal_coherence(entities[j].anterior, new_bboxes, assigned, th=th)
+                
+                else:
+                    matched.append(index)
+                    entities[j].found()
+                    pred_bbox = entities[j].predict_bbox()
+                    assigned.append(index)
+                    entities[j].update_bbox(box_current)
+                    ps = entities[j].predicted_state() # our predict stage
+                    #pred_bbox = entities[j].predict_bbox()
+                    entities[j].correct(box_current)
+
+                    # Draw the bounding box on the frame
+                    x, y, w, h = box_current
+                    cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+                    # Draw the Kalman filter's predicted position on the frame
+                    x, y, w, h = pred_bbox
+                    #x, y = int(predicted_state[0]), int(predicted_state[1])
+                    cv2.rectangle(frame, (x, y), (x+w, y+h), entities[j].color, 2)
+
+        # these are probably players
+        rois_matched = [i for j, i in enumerate(new_bboxes) if j in matched]
+
+        rest, ball_image = get_rest_of_rois(rois_matched, image_th)
+
+        #print_rois(rest, frame=frame)
+        #cv2.imshow("balota", ball_image)
+        
+        if not(ball):
+            if rest:
+                for i in rest:
+                    print(i)
+                    ball.append(Enitity(i))
+        else :
+            match_ball = []
+            ass_ball   = []
+            delete_ball= []
             # assign first players
-            for j in range(len(entities)):
-                (x,y,w,h) = entities[j].current
-
-                if w > 45 and h > 45:
-                    th=0.4
+            for j in range(len(ball)):
+                (x,y,w,h) = ball[j].current
+                # I will just ignore tiny predictions
+                if rest:
+                    th=0.0
                     # miro si hay alguna bounding box que quiera ser como esta
-                    index, box_current = temporal_coherence(entities[j].current, new_bboxes, assigned, th=th)
+                    index, box_current = temporal_coherence(ball[j].current, rest, ass_ball, th=th)
                     
                     # si no la encuentro mira de usar una prediccion
                     if index== -1:
+                        break
                         pred_bbox = entities[j].predict_bbox()
-                        index, box_current = temporal_coherence(pred_bbox, new_bboxes, assigned, th=th)
+                        index, box_current = temporal_coherence(pred_bbox, new_bboxes, ass_ball, th=th)
 
                     # si no la encuentro mira de usar la última posicion
                     if index== -1:
-                        index, box_current = temporal_coherence(entities[j].anterior, new_bboxes, assigned, th=th)
+                        index, box_current = temporal_coherence(ball[j].anterior, rest, ass_ball, th=th)
+
+                    if index == -1:
+                        
+                        ball[j].missed()
+                        print("jijijiji")
+                        if ball[j].time > 25:
+                            
+                            # if the object has disapeared for more than 5 frames we will delete it
+                            #delete_ball.append(j)
+                            pass
+                        else:
+                            #entities[j].update_bbox(entities[j].predict_bbox())
+                            #ps = entities[j].predicted_state() # our predict stage
+                            #pred_bbox = entities[j].predict_bbox()
+                            #entities[j].correct(pred_bbox)
+                            pass
+                            #entities.append(Enitity(box_current))
                     
                     else:
-                        matched.append(index)
-                        entities[j].found()
-                        assigned.append(index)
-                        entities[j].update_bbox(box_current)
-                        ps = entities[j].predicted_state() # our predict stage
-                        pred_bbox = entities[j].predict_bbox()
-                        entities[j].correct(box_current)
+                        match_ball.append(index)
+                        ball[j].found()
+                        pred_bbox = ball[j].predict_bbox()
+                        ass_ball.append(index)
+                        ball[j].update_bbox(box_current)
+                        ps = ball[j].predicted_state() # our predict stage
+                        #pred_bbox = entities[j].predict_bbox()
+                        ball[j].correct(box_current)
 
                         # Draw the bounding box on the frame
                         x, y, w, h = box_current
@@ -305,36 +389,42 @@ def main():
                         # Draw the Kalman filter's predicted position on the frame
                         x, y, w, h = pred_bbox
                         #x, y = int(predicted_state[0]), int(predicted_state[1])
-                        cv2.rectangle(frame, (x, y), (x+w, y+h), entities[j].color, 2)
+                        cv2.rectangle(frame, (x, y), (x+w, y+h), ball[j].color, 2)
 
-            if False:
-                copy = clean.copy()
-                notmatched = [i for j, i in enumerate(new_bboxes) if j  not in matched]
+            ball = [i for j, i in enumerate(ball) if j not in delete_ball]
+        cv2.imshow("Tracking", frame)
 
-                if notmatched:
-                    print_rois(notmatched, copy)
 
-                    if prev:
-                        print_rois(prev, copy)
 
-                    cv2.imshow("notmatched", copy)
-                    if cv2.waitKey(0) & 0xFF == ord('f'):
-                        pass
 
-            #notmatched = [i for j, i in enumerate(new_bboxes) if j  not in matched]
+        if False:
+            copy = clean.copy()
+            notmatched = [i for j, i in enumerate(new_bboxes) if j  not in matched]
+
+            if notmatched:
+                print_rois(notmatched, copy)
+
+                if prev:
+                    print_rois(prev, copy)
+
+                cv2.imshow("notmatched", copy)
+                if cv2.waitKey(0) & 0xFF == ord('f'):
+                    pass
+        if False: # importante
+            notmatched = [i for j, i in enumerate(new_bboxes) if j  not in matched]
 
             #prev = notmatched
-            #if len(entities)<3:
-            #    for i in range(len(notmatched)):
-            #        (x,y,w,h)=notmatched[i]
-            #        if w < 45 and h < 45:
-            #            entities.append(Enitity(notmatched[i]))
+            if len(entities)<3:
+                for i in range(len(notmatched)):
+                    (x,y,w,h)=notmatched[i]
+                    if w < 45 and h < 45:
+                        pass
+                        #entities.append(Enitity(notmatched[i]))
 
 
             for j in range(len(entities)):
                 (x,y,w,h) = entities[j].current
                 if j not in assigned:          
-
 
                     th = 0.0
                     # miro si hay alguna bounding box que quiera ser como esta
@@ -358,11 +448,11 @@ def main():
                             delete.append(j)
                             pass
                         else:
-                            entities[j].update_bbox(entities[j].predict_bbox())
+                            #entities[j].update_bbox(entities[j].predict_bbox())
                             #ps = entities[j].predicted_state() # our predict stage
-                            pred_bbox = entities[j].predict_bbox()
-                            entities[j].correct(pred_bbox)
-                                                    
+                            #pred_bbox = entities[j].predict_bbox()
+                            #entities[j].correct(pred_bbox)
+                            pass
                             #entities.append(Enitity(box_current))
                             
                     else:
@@ -421,7 +511,7 @@ def main():
         #bounding_boxes = new_bounding_boxes
         # Show the frame
         
-        cv2.imshow("Tracking", frame)
+        #cv2.imshow("Tracking", frame)
 
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
