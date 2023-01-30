@@ -11,7 +11,7 @@ import random
 from scipy.optimize import linear_sum_assignment
 
 class Enitity(object):
-    def __init__(self, bbox, player = 0):
+    def __init__(self, bbox, player = 0, is_ball = 0):
         # Initialization of the Kalman filte
         self.kf = cv2.KalmanFilter(4, 2)
         self.kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
@@ -20,6 +20,7 @@ class Enitity(object):
 
         self.player = player
         self.hit = 0
+        self.is_ball = is_ball
 
         self.current = bbox
         self.anterior = bbox
@@ -65,11 +66,21 @@ class Enitity(object):
         self.h = h
         self.w = w
 
+
+def center(bbox):
+    (x,y,w,h) = bbox
+    return(x+w//2, y+h//2)
+
+
 def find_score_player(entities, ball_object, first=0):
     distance = []
     for index,i in enumerate(entities):
-        (xe,ye,we,he) = i.current
-        (xb,yb,wb,hb)=ball_object.current
+        (xe,ye) = center(i.current)
+        (xb,yb) = center(ball_object.current)
+
+        #(xe,ye,we,he) = i.current
+        #(xb,yb,wb,hb) = ball_object.current
+
         distance.append(((xe - xb)**2 + (ye - yb)**2)**0.5)
         # if its the first shot we are gona just check which one is  nearest the dude
         if first:
@@ -104,6 +115,8 @@ def get_rois(frame, cal, backSub):
     # this is new, seems interesting
     fgMask = cv2.erode(fgMask, np.ones((5,5), np.uint8), iterations=3)
     fgMask = cv2.dilate(fgMask, np.ones((7, 7), np.uint8), iterations=2)
+
+    #fgMask = cv2.erode(fgMask, np.ones((5,7), np.uint8), iterations=3)
 
     ret, fgMask = cv2.threshold(fgMask, 170, 200, cv2.THRESH_BINARY)
     #fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
@@ -286,6 +299,7 @@ def main():
     prev_bbox = []
     # Read until video is completed
 
+    # las player that hitted the ball
     last = 0
 
     prev = []
@@ -296,10 +310,7 @@ def main():
         if not ret:
             break
         
-
         new_bboxes, image_th = get_rois(frame, cal, backSub)
-
-        
 
         matched = []
         assigned = []
@@ -313,16 +324,16 @@ def main():
             # I will just ignore tiny predictions
             if w > 45 and h > 45:
                 th=0.5
-                # miro si hay alguna bounding box que quiera ser como esta
+                # Search for a bounding box i want to use with the entity we are checking
                 index, box_current = temporal_coherence(entities[j].current, new_bboxes, assigned, th=th)
                 
-                # si no la encuentro mira de usar una prediccion
+                # If we do not found it, we will search using a predicted bounding box
                 if index== -1:
                     break
                     pred_bbox = entities[j].predict_bbox()
                     index, box_current = temporal_coherence(pred_bbox, new_bboxes, assigned, th=th)
 
-                # si no la encuentro mira de usar la última posicion
+                # If we still do not find it, we will try to use the las position we have seen it
                 if index== -1:
                     index, box_current = temporal_coherence(entities[j].anterior, new_bboxes, assigned, th=th)
                 
@@ -340,9 +351,8 @@ def main():
                     # Draw the bounding box on the frame
                     x, y, w, h = box_current
                     cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
-                    
+                    cv2.circle(frame, center(box_current), 2, (255,255,0), -1)
                     cv2.putText(frame, "Player %i" % entities[j].player , (x, y-10), cv2.FONT_HERSHEY_DUPLEX , 1, 2)
-
 
                     # Draw the Kalman filter's predicted position on the frame
                     x, y, w, h = pred_bbox
@@ -361,42 +371,47 @@ def main():
             if rest:
                 for i in rest:
                     print(i)
-                    ball.append(Enitity(i))
+                    ball.append(Enitity(i, is_ball=1))
                 # Here we supose that there is only one ball
                 # and no artifacts for the first detection
                 index, d = find_score_player(entities, ball[0], first=0)
                 entities[index].score_hit()
+                last = entities[index].player
+
         else :
             match_ball = []
             ass_ball   = []
             delete_ball= []
-            # assign first players
+
+            # Assign first players
             for j in range(len(ball)):
                 (x,y,w,h) = ball[j].current
                 # I will just ignore tiny predictions
                 if rest:
-                    th=0.0
-                    # miro si hay alguna bounding box que quiera ser como esta
+
+                    # We don't need to apply a treshhold here because we are just checking with the bounding box of the ball
+                    # and if we have other, we will still checking a good IOU to be assigned.
+                    th = 0.0
+
+                    # Search for a bounding box i want to use with the entity we are checking
                     index, box_current = temporal_coherence(ball[j].current, rest, ass_ball, th=th)
                     
-                    # si no la encuentro mira de usar una prediccion
+                    # If we do not found it, we will search using a predicted bounding box
                     if index== -1:
-                        break
-                        pred_bbox = entities[j].predict_bbox()
-                        index, box_current = temporal_coherence(pred_bbox, new_bboxes, ass_ball, th=th)
+                        pred_bbox = ball[j].predict_bbox()
+                        index, box_current = temporal_coherence(pred_bbox, rest, ass_ball, th=th)
 
-                    # si no la encuentro mira de usar la última posicion
+                    # If we still do not find it, we will try to use the las position we have seen it
                     if index== -1:
                         index, box_current = temporal_coherence(ball[j].anterior, rest, ass_ball, th=th)
 
                     if index == -1:
                         
                         ball[j].missed()
-                        print("jijijiji")
                         if ball[j].time > 25:
                             
                             # if the object has disapeared for more than 5 frames we will delete it
-                            #delete_ball.append(j)
+                            delete_ball.append(j)
                             pass
                         else:
                             #entities[j].update_bbox(entities[j].predict_bbox())
@@ -407,6 +422,22 @@ def main():
                             #entities.append(Enitity(box_current))
                     
                     else:
+                        #print("aaaaaaaaaaaaaaaaa")
+                        # si ha esta más que un poco tiempo y esta muy cerca de un jugador
+                        # entonces es que es un hit
+                        if True:
+                            socore_player,distance = find_score_player(entities, ball[j])
+                            if distance >= 1000:
+                                pass
+                            else:
+                                if last == entities[socore_player].player:
+                                    pass
+                                else:
+                                    entities[socore_player].score_hit()
+                                    (x1, y1, w, h)=ball[j].current
+                                    cv2.putText(frame, "HITAZO!!!!!", (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+                                    #print("TOCADA")
+                                    last = entities[socore_player].player
 
                         match_ball.append(index)
                         ball[j].found()
@@ -414,11 +445,7 @@ def main():
                         ass_ball.append(index)
                         ball[j].update_bbox(box_current)
                         ps = ball[j].predicted_state() # our predict stage
-                        #pred_bbox = entities[j].predict_bbox()
                         ball[j].correct(box_current)
-
-
-
 
                         # Draw the bounding box on the frame
                         x, y, w, h = box_current
@@ -426,29 +453,16 @@ def main():
 
                         cv2.putText(frame, "Ball", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
 
-
-                        # Draw the Kalman filter's predicted position on the frame
+                        # draw the kalman filter prediction
                         x, y, w, h = pred_bbox
-                        #x, y = int(predicted_state[0]), int(predicted_state[1])
                         cv2.rectangle(frame, (x, y), (x+w, y+h), ball[j].color, 2)
                 else:
-                    print("me escondo")
-
-                    # si ha esta más que un poco tiempo y esta muy cerca de un jugador
-                    # entonces es que es un hit
-                    if ball[j].time >= 1 and False:
-                        socore_player,distance = find_score_player(entities, ball[j])
-                        if distance >= 1000:
-                            pass
-                        else:
-                            entities[socore_player].score_hit()
-                            (x1, y1, w, h)=ball[j].current
-                            cv2.putText(frame, "HITAZO!!!!!", (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-                            print("TOCADA")
-
+                    pass
+            # In case of having more than one posible ball, we will get rid of the
+            # inconsistent noise
             ball = [i for j, i in enumerate(ball) if j not in delete_ball]
 
-        
+        # Drawing of the Board
         x = 0
         y = 0
         w = 420
@@ -461,25 +475,18 @@ def main():
         cv2.imshow("Tracking", frame)
         entities = [i for j, i in enumerate(entities) if j not in delete]
 
-
-
-
         # IDEA ; para el video dos meterle un poco de mascara a los catchers
-        if len(entities) > 2:
-            print("sajara")
+        #if len(entities) > 2:
+        #    print("Player overflow")
        
         prev_bbox = new_bboxes
-        #bounding_boxes = new_bounding_boxes
-        # Show the frame
-        
-        #cv2.imshow("Tracking", frame)
 
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
 
-    # When everything done, release the video capture object
+    # release video capture
     cap.release()
-    # Closes all the frames
+    # Close
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
