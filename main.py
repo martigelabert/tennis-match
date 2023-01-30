@@ -225,7 +225,7 @@ def main():
     # Get the bounding box coordinates for all objects in the first frame
     bounding_boxes, _ = get_rois(frame, cal, backSub)
 
-    mot_tracker = sort.Sort() 
+    mot_tracker = sort.Sort(min_hits=10) 
 
     # We will start assignating when the ball and all things are on the field
     # Create a Kalman filter for each object and add it to the list
@@ -257,8 +257,13 @@ def main():
             y1 = int(i[1])
             x2 = int(i[2])
             y2 = int(i[3])
-            cv2.rectangle(frame, (x1,y1), (x2, y2), (255, 0, 0), 2)
-            cv2.putText(frame, str(i[4]), (x1, y1 ), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+
+            dif = x1-x2
+            dify= abs(y1-y2)
+            cv2.rectangle(frame, (x1,y1),(x2 , y2 ) , (255, 0, 0), 2)
+            cv2.putText(frame, str(i[4]), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+
+
 
         if False:
             matched = np.zeros(shape= (len(new_bboxes),))
