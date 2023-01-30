@@ -2,13 +2,8 @@ import numpy as np
 import cv2
 import os
 from time import sleep
-
-import matplotlib.pyplot as plt
-
 import argparse
 import random
-
-from scipy.optimize import linear_sum_assignment
 
 class Enitity(object):
     def __init__(self, bbox, player = 0, is_ball = 0):
