@@ -457,7 +457,11 @@ def main():
             y+=40
             cv2.putText(frame, "Player %i scores -> %i" % (i.player, i.hit), (x, y+10), cv2.FONT_HERSHEY_SIMPLEX, 1, 4)
 
-        cv2.imshow("Tracking", frame)
+        #cv2.imshow("Tracking", frame)
+        #cv2.imshow("General", image_th)
+        cv2.imshow("Ball", ball_image)
+        
+
         entities = [i for j, i in enumerate(entities) if j not in delete]
 
         # IDEA ; para el video dos meterle un poco de mascara a los catchers
