@@ -286,6 +286,8 @@ def main():
     prev_bbox = []
     # Read until video is completed
 
+    last = 0
+
     prev = []
     while(cap.isOpened()):
         # Capture frame-by-frame
@@ -330,9 +332,10 @@ def main():
                     pred_bbox = entities[j].predict_bbox()
                     assigned.append(index)
                     entities[j].update_bbox(box_current)
+                    entities[j].correct(box_current)
                     ps = entities[j].predicted_state() # our predict stage
                     #pred_bbox = entities[j].predict_bbox()
-                    entities[j].correct(box_current)
+                    #entities[j].correct(box_current)
 
                     # Draw the bounding box on the frame
                     x, y, w, h = box_current
