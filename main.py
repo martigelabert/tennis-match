@@ -11,12 +11,15 @@ import random
 from scipy.optimize import linear_sum_assignment
 
 class Enitity(object):
-    def __init__(self, bbox):
+    def __init__(self, bbox, player = 0):
         # Initialization of the Kalman filte
         self.kf = cv2.KalmanFilter(4, 2)
         self.kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
         self.kf.transitionMatrix = np.array([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
         self.kf.processNoiseCov = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32) * 0.03
+
+        self.player = player
+        self.hit = 0
 
         self.current = bbox
         self.anterior = bbox
@@ -31,6 +34,8 @@ class Enitity(object):
         self.h = h
         self.w = w
 
+    def score_hit(self):
+        self.hit  += 1
 
     def missed(self):
         self.time += 1
@@ -59,6 +64,21 @@ class Enitity(object):
         # we will guess that the objects will mantein proportions
         self.h = h
         self.w = w
+
+def find_score_player(entities, ball_object, first=0):
+    distance = []
+    for index,i in enumerate(entities):
+        (xe,ye,we,he) = i.current
+        (xb,yb,wb,hb)=ball_object.current
+        distance.append(((xe - xb)**2 + (ye - yb)**2)**0.5)
+        # if its the first shot we are gona just check which one is  nearest the dude
+        if first:
+            pass
+        else:
+            if distance[index] > 150:
+                distance[index] = 10000
+
+    return np.argmin(np.array(distance)), distance[np.argmin(np.array(distance))] 
 
 def get_rois(frame, cal, backSub):
 
@@ -184,6 +204,8 @@ def calibration_mask(vid):
     else:
         img = cv2.imread('video_cut_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
         img[:90][:] = 0
+        
+        #img[img.shape[0]-250:][:] = 0
         return img
 
 # ahora que tengo a los wachos, los borro de la imagen
@@ -206,8 +228,6 @@ def get_rest_of_rois(rois_matched, image_th):
 
     #print(len(rois))
     return r, ball_image
-
-
 
 def main():
     entities = []
@@ -243,7 +263,7 @@ def main():
     _ = get_rois(frame, cal, backSub)
 
 
-    for _ in range(10):
+    for _ in range(5):
         # We will ignore the second and third frame
         ret, frame = cap.read()
         _ = get_rois(frame, cal, backSub)
@@ -256,8 +276,12 @@ def main():
 
     # We will start assignating when the ball and all things are on the field
     # Create a Kalman filter for each object and add it to the list
-    for box in bounding_boxes:
-        entities.append(Enitity(box))
+
+
+
+    for i,box in enumerate(bounding_boxes):
+        i+=1
+        entities.append(Enitity(box, player=i))
 
     prev_bbox = []
     # Read until video is completed
@@ -285,7 +309,7 @@ def main():
         for j in range(len(entities)):
             (x,y,w,h) = entities[j].current
             # I will just ignore tiny predictions
-            if w > 50 and h > 50:
+            if w > 45 and h > 45:
                 th=0.5
                 # miro si hay alguna bounding box que quiera ser como esta
                 index, box_current = temporal_coherence(entities[j].current, new_bboxes, assigned, th=th)
@@ -313,6 +337,9 @@ def main():
                     # Draw the bounding box on the frame
                     x, y, w, h = box_current
                     cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+                    
+                    cv2.putText(frame, "Player %i" % entities[j].player , (x, y-10), cv2.FONT_HERSHEY_DUPLEX , 1, 2)
+
 
                     # Draw the Kalman filter's predicted position on the frame
                     x, y, w, h = pred_bbox
@@ -332,6 +359,10 @@ def main():
                 for i in rest:
                     print(i)
                     ball.append(Enitity(i))
+                # Here we supose that there is only one ball
+                # and no artifacts for the first detection
+                index, d = find_score_player(entities, ball[0], first=0)
+                entities[index].score_hit()
         else :
             match_ball = []
             ass_ball   = []
@@ -373,6 +404,7 @@ def main():
                             #entities.append(Enitity(box_current))
                     
                     else:
+
                         match_ball.append(index)
                         ball[j].found()
                         pred_bbox = ball[j].predict_bbox()
@@ -382,21 +414,56 @@ def main():
                         #pred_bbox = entities[j].predict_bbox()
                         ball[j].correct(box_current)
 
+
+
+
                         # Draw the bounding box on the frame
                         x, y, w, h = box_current
                         cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
+
+                        cv2.putText(frame, "Ball", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+
 
                         # Draw the Kalman filter's predicted position on the frame
                         x, y, w, h = pred_bbox
                         #x, y = int(predicted_state[0]), int(predicted_state[1])
                         cv2.rectangle(frame, (x, y), (x+w, y+h), ball[j].color, 2)
+                else:
+                    print("me escondo")
+
+                    # si ha esta más que un poco tiempo y esta muy cerca de un jugador
+                    # entonces es que es un hit
+                    if ball[j].time >= 1 and False:
+                        socore_player,distance = find_score_player(entities, ball[j])
+                        if distance >= 1000:
+                            pass
+                        else:
+                            entities[socore_player].score_hit()
+                            (x1, y1, w, h)=ball[j].current
+                            cv2.putText(frame, "HITAZO!!!!!", (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+                            print("TOCADA")
 
             ball = [i for j, i in enumerate(ball) if j not in delete_ball]
-        cv2.imshow("Tracking", frame)
 
+        
+        x = 0
+        y = 0
+        w = 420
+        h = 120
+        cv2.rectangle(frame, (x,y), (x+w,y+h), (255,255, 255),-1)
+        for i in entities:
+            y+=40
+            cv2.putText(frame, "Player %i scores -> %i" % (i.player, i.hit), (x, y+10), cv2.FONT_HERSHEY_SIMPLEX, 1, 4)
+
+        cv2.imshow("Tracking", frame)
         entities = [i for j, i in enumerate(entities) if j not in delete]
 
 
+
+
+        # IDEA ; para el video dos meterle un poco de mascara a los catchers
+        if len(entities) > 2:
+            print("sajara")
        
         prev_bbox = new_bboxes
         #bounding_boxes = new_bounding_boxes
