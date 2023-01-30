@@ -6,11 +6,10 @@ import kalman
 import argparse
 import detector
 import sort
-import random
 
 from scipy.optimize import linear_sum_assignment
 
-class Enitity(object):
+class Enitity(self):
     def __init__(self, bbox):
         # Initialization of the Kalman filte
         self.kf = cv2.KalmanFilter(4, 2)
@@ -22,22 +21,12 @@ class Enitity(object):
         self.anterior = bbox
         (x,y,w,h) = bbox
 
-        self.tiempo = 0
-
-        self.color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
         # we will guess that the objects will mantein proportions
         self.h = h
         self.w = w
 
-
-
     def predicted_state(self):
         return self.kf.predict()
-
-    def predict_bbox(self):
-        predicted_state = self.kf.predict()
-        x, y = int(predicted_state[0]), int(predicted_state[1])
-        return (x, y, self.w, self.h)
     
     def correct(self, box):
         self.kf.correct(np.array([[np.float32(box[0])], [np.float32(box[1])]]))
@@ -51,6 +40,8 @@ class Enitity(object):
         # we will guess that the objects will mantein proportions
         self.h = h
         self.w = w
+
+
 
 def get_rois(frame, cal, backSub):
 
@@ -79,74 +70,58 @@ def get_rois(frame, cal, backSub):
         min_x, max_x = min(x, min_x), max(x+w, max_x)
         min_y, max_y = min(y, min_y), max(y+h, max_y)
         #if w > 45 and h > 45 or 25 < w < 35 and 25 < h < 35:
-        #cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
+        cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
         rois.append(cv2.boundingRect(contour))
         
-    return rois, fgMask
+    return rois
 
 # Code extracted from
 # https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
-def iou(box1, box2):
-    """
-    Implement the intersection over union (IoU) between box1 and box2
-        
-    Arguments:
-        box1 -- first box, numpy array with coordinates (ymin, xmin, ymax, xmax)
-        box2 -- second box, numpy array with coordinates (ymin, xmin, ymax, xmax)
-    """
-    # ymin, xmin, ymax, xmax = box
-    
-    y11, x11, y21, x21 = box1
-    y12, x12, y22, x22 = box2
-    
-    yi1 = max(y11, y12)
-    xi1 = max(x11, x12)
-    yi2 = min(y21, y22)
-    xi2 = min(x21, x22)
-    inter_area = max(((xi2 - xi1) * (yi2 - yi1)), 0)
-    # Calculate the Union area by using Formula: Union(A,B) = A + B - Inter(A,B)
-    box1_area = (x21 - x11) * (y21 - y11)
-    box2_area = (x22 - x12) * (y22 - y12)
-    union_area = box1_area + box2_area - inter_area
-    # compute the IoU
-    if union_area==0:
-        return -1
+def iou(boxA, boxB):
+	# determine the (x, y)-coordinates of the intersection rectangle
+	xA = max(boxA[0], boxB[0])
+	yA = max(boxA[1], boxB[1])
+	xB = min(boxA[2], boxB[2])
+	yB = min(boxA[3], boxB[3])
+	# compute the area of intersection rectangle
+	interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+	# compute the area of both the prediction and ground-truth
+	# rectangles
+	boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+	boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+	# compute the intersection over union by taking the intersection
+	# area and dividing it by the sum of prediction + ground-truth
+	# areas - the interesection area
+	iou = interArea / float(boxAArea + boxBArea - interArea)
+	# return the intersection over union value
+	return iou
 
-    iou = inter_area / union_area
-    return iou
-
-def temporal_coherence(box, rois, ignore=[], frame = [], debug = 0):
+def temporal_coherence(box, rois, ignore=[]):
     """Return the index of which the box is more suitable to be"""
-
-    scores = []
+    score = []
     for r in rois:
         scores.append(iou(box, r))
     scores = np.array(scores)
-    #print(scores)
 
     ideal = np.argmax(scores)
     
-    #return ideal, rois[np.argmax(scores)]
-
     found = False
     i = 0 
     while(not(found)) and i < len(rois):
-        
-        if ideal in ignore or scores[ideal]<0.4:
+        if ideal in ignore or scores[ideal]<0.3:
             scores[ideal] = -42 # we will not check it 
             scores
             i+=1
             ideal = np.argmax(scores)
-
         else:
             return np.argmax(scores), rois[np.argmax(scores)]
+
     # return -1 if we dont find our thing
     return -1, box
     
  
 def print_rois(rois, frame):
     tmp = frame.copy()
-    
     for (x,y,w,h) in rois:
         cv2.rectangle(frame, (x,y), (x+w,y+h), (255, 0, 0), 2)
     return frame
@@ -156,32 +131,13 @@ def calibration_mask(vid):
         return cv2.imread('vid2_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
     else:
         img = cv2.imread('video_cut_mask_bin.jpg', cv2.IMREAD_GRAYSCALE)
-        img[:90][:] = 0
+        img[:60][:] = 0
+        cv2.imshow("cam", img)
+        if cv2.waitKey(10) & 0xFF == ord('q'):
+            break
         return img
 
 
-def yolobbox2bbox(box):
-    (x,y,w,h) = box
-    x1, y1 = x-w/2, y-h/2
-    x2, y2 = x+w/2, y+h/2
-    return x1, y1, x2, y2
-
-def convert(size, box):
-    dw = 1./size[0]
-    dh = 1./size[1]
-    x = (box[0] + box[1])/2.0
-    y = (box[2] + box[3])/2.0
-    w = box[1] - box[0]
-    h = box[3] - box[2]
-    x = x*dw
-    w = w*dw
-    y = y*dh
-    h = h*dh
-    return (x,y,w,h)
-
-
-
-entities = []
 
 def main():
     first = True
@@ -213,24 +169,16 @@ def main():
     # Read the first frame of the video
     ret, frame = cap.read()
 
-    _ = get_rois(frame, cal, backSub)
-
-
-    for _ in range(25):
-        # We will ignore the second and third frame
-        ret, frame = cap.read()
-        _ = get_rois(frame, cal, backSub)
-
-
     # Get the bounding box coordinates for all objects in the first frame
-    bounding_boxes, _ = get_rois(frame, cal, backSub)
+    bounding_boxes = get_rois(frame, cal, backSub)
 
-    mot_tracker = sort.Sort() 
-
-    # We will start assignating when the ball and all things are on the field
     # Create a Kalman filter for each object and add it to the list
     for box in bounding_boxes:
-        entities.append(Enitity(box))
+        kf = cv2.KalmanFilter(4, 2)
+        kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
+        kf.transitionMatrix = np.array([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
+        kf.processNoiseCov = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32) * 0.03
+        kf_list.append(kf)
 
     # Read until video is completed
     while(cap.isOpened()):
@@ -239,68 +187,32 @@ def main():
 
         if not ret:
             break
-        
-        
 
-        new_bboxes, _ = get_rois(frame, cal, backSub)
+        new_bounding_boxes = get_rois(frame, cal, backSub)
 
-        a = []
-        for j in new_bboxes:
-           a.append(yolobbox2bbox(j))
+        # Use Hungarian algorithm to match the bounding boxes between frames
+        cost_matrix = np.zeros((len(bounding_boxes), len(new_bounding_boxes)))
+        for i in range(len(bounding_boxes)):
+            for j in range(len(new_bounding_boxes)):
+                cost_matrix[i, j] = np.linalg.norm(np.array(bounding_boxes[i]) - np.array(new_bounding_boxes[j]))
 
-        track_bbs_ids = mot_tracker.update(np.array(a))
+        # just getting the distance
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
-        #print(track_bbs_ids.shape)
+        # Update the Kalman filter for each matched object
+        for i, j in zip(row_ind, col_ind):
+            kf = kf_list[i]
+            box = new_bounding_boxes[j]
+            predicted_state = kf.predict()
+            kf.correct(np.array([[np.float32(box[0])], [np.float32(box[1])]]))
 
-        for i in track_bbs_ids:
-            x1 = int(i[0])
-            y1 = int(i[1])
-            x2 = int(i[2])
-            y2 = int(i[3])
-            cv2.rectangle(frame, (x1,y1), (x2, y2), (255, 0, 0), 2)
-            cv2.putText(frame, str(i[4]), (x1, y1 ), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+            # Draw the bounding box on the frame
+            x, y, w, h = box
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
-        if False:
-            matched = np.zeros(shape= (len(new_bboxes),))
-            #print(matched)
-
-            assigned = []
-            for j in range(len(entities)):
-
-                # miro si hay alguna bounding box que quiera ser como esta
-                index, box_current = temporal_coherence(entities[j].current, new_bboxes, assigned)
-                
-                # si no la encuentro mira de usar una prediccion
-                if index== -1:
-                    pred_bbox = entities[j].predict_bbox()
-                    index, box_current = temporal_coherence(pred_bbox, new_bboxes, assigned)
-
-                # si no la encuentro mira de usar la última posicion
-                if index== -1:
-                    index, box_current = temporal_coherence(entities[j].anterior, new_bboxes, assigned)
-
-                if index == -1:
-                    pass
-                    
-                    #a = cv2.selectROI(frame)
-                    
-                    #entities.append(Enitity(box_current))
-                    #delete.append() 
-                else:
-                    assigned.append(index)
-                    entities[j].update_bbox(box_current)
-                    ps = entities[j].predicted_state() # our predict stage
-                    pred_bbox = entities[j].predict_bbox()
-                    entities[j].correct(box_current)
-
-                    # Draw the bounding box on the frame
-                    x, y, w, h = box_current
-                    cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
-
-                    # Draw the Kalman filter's predicted position on the frame
-                    x, y, w, h = pred_bbox
-                    #x, y = int(predicted_state[0]), int(predicted_state[1])
-                    cv2.rectangle(frame, (x, y), (x+w, y+h), entities[j].color, 2)
+            # Draw the Kalman filter's predicted position on the frame
+            x, y = int(predicted_state[0]), int(predicted_state[1])
+            cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 0), 2)
 
         #bounding_boxes = new_bounding_boxes
         # Show the frame
@@ -316,4 +228,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
