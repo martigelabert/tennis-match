@@ -2,8 +2,10 @@ import numpy as np
 import cv2
 import os
 from time import sleep
-
+import kalman
 import argparse
+import detector
+import sort
 import random
 
 from scipy.optimize import linear_sum_assignment
@@ -84,31 +86,33 @@ def get_rois(frame, cal, backSub):
 
 # Code extracted from
 # https://pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
-def iou(boxA, boxB):
-    (x,y,w,h) = boxA
-    boxA = np.array([x,y,x+w,y+h])
-
-    (x,y,w,h) = boxB
-    boxB = np.array([x,y,x+w,y+h])
-
-    # determine the (x, y)-coordinates of the intersection rectangle
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
-    # compute the area of intersection rectangle
-    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
-    # compute the area of both the prediction and ground-truth
-    # rectangles
-    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
-    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
-    # compute the intersection over union by taking the intersection
-    # area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
-    if float(boxAArea + boxBArea - interArea) == 0:
+def iou(box1, box2):
+    """
+    Implement the intersection over union (IoU) between box1 and box2
+        
+    Arguments:
+        box1 -- first box, numpy array with coordinates (ymin, xmin, ymax, xmax)
+        box2 -- second box, numpy array with coordinates (ymin, xmin, ymax, xmax)
+    """
+    # ymin, xmin, ymax, xmax = box
+    
+    y11, x11, y21, x21 = box1
+    y12, x12, y22, x22 = box2
+    
+    yi1 = max(y11, y12)
+    xi1 = max(x11, x12)
+    yi2 = min(y21, y22)
+    xi2 = min(x21, x22)
+    inter_area = max(((xi2 - xi1) * (yi2 - yi1)), 0)
+    # Calculate the Union area by using Formula: Union(A,B) = A + B - Inter(A,B)
+    box1_area = (x21 - x11) * (y21 - y11)
+    box2_area = (x22 - x12) * (y22 - y12)
+    union_area = box1_area + box2_area - inter_area
+    # compute the IoU
+    if union_area==0:
         return -1
-    iou = interArea / float(boxAArea + boxBArea - interArea)
-    # return the intersection over union value
+
+    iou = inter_area / union_area
     return iou
 
 def temporal_coherence(box, rois, ignore=[], frame = [], debug = 0):
@@ -156,6 +160,27 @@ def calibration_mask(vid):
         return img
 
 
+def yolobbox2bbox(box):
+    (x,y,w,h) = box
+    x1, y1 = x-w/2, y-h/2
+    x2, y2 = x+w/2, y+h/2
+    return x1, y1, x2, y2
+
+def convert(size, box):
+    dw = 1./size[0]
+    dh = 1./size[1]
+    x = (box[0] + box[1])/2.0
+    y = (box[2] + box[3])/2.0
+    w = box[1] - box[0]
+    h = box[3] - box[2]
+    x = x*dw
+    w = w*dw
+    y = y*dh
+    h = h*dh
+    return (x,y,w,h)
+
+
+
 entities = []
 
 def main():
@@ -200,7 +225,7 @@ def main():
     # Get the bounding box coordinates for all objects in the first frame
     bounding_boxes, _ = get_rois(frame, cal, backSub)
 
-    #mot_tracker = sort.Sort(min_hits=10) 
+    mot_tracker = sort.Sort(min_hits=10) 
 
     # We will start assignating when the ball and all things are on the field
     # Create a Kalman filter for each object and add it to the list
@@ -219,12 +244,28 @@ def main():
 
         new_bboxes, _ = get_rois(frame, cal, backSub)
 
+        a = []
+        for j in new_bboxes:
+           a.append(yolobbox2bbox(j))
+
+        track_bbs_ids = mot_tracker.update(np.array(a))
+
         #print(track_bbs_ids.shape)
-        #cv2.putText(frame, str(i[4]), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+
+        for i in track_bbs_ids:
+            x1 = int(i[0])
+            y1 = int(i[1])
+            x2 = int(i[2])
+            y2 = int(i[3])
+
+            dif = x1-x2
+            dify= abs(y1-y2)
+            cv2.rectangle(frame, (x1,y1),(x2 , y2 ) , (255, 0, 0), 2)
+            cv2.putText(frame, str(i[4]), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
 
 
 
-        if True:
+        if False:
             matched = np.zeros(shape= (len(new_bboxes),))
             #print(matched)
 
