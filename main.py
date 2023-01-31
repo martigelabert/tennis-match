@@ -1,3 +1,5 @@
+# Martí Gelabert Gómez
+# Tennis
 import numpy as np  
 import cv2
 import os
@@ -473,6 +475,9 @@ def main():
         elif mode == 3: # no display
             pass
 
+
+
+        # Uncoment the one you want to save
         #tracking_video.append(frame)
         #general_video.append(image_th)
         #ball_video.append(ball_image)
@@ -489,13 +494,13 @@ def main():
 
     print("The Winner is player %i" % last)
 
-    # If you need to save the video enable this
+    # If you need to save the video enable this, also enable
+    # and change the array to use and also the name
     if False:
-        height,width, _ =tracking_video[0].shape
+        height,width =general_video[0].shape
 
-        video=cv2.VideoWriter('videos_gen/video.mp4',cv2.VideoWriter_fourcc(*'mp4v'),30,(width,height))
-        #video=cv2.VideoWriter(output_filename, fourcc, fps, self._window_shape)
-        for i in tracking_video:
+        video=cv2.VideoWriter('videos_gen/video_binary.mp4',cv2.VideoWriter_fourcc(*'mp4v'),30,(width,height))
+        for i in general_video:
             video.write(i)
 
     # release video capture
