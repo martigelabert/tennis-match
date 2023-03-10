@@ -14,6 +14,7 @@ class Enitity(object):
         self.kf.measurementMatrix = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], np.float32)
         self.kf.transitionMatrix = np.array([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32)
         self.kf.processNoiseCov = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], np.float32) * 0.03
+         
 
         self.player = player
         self.hit = 0
@@ -64,6 +65,7 @@ class Enitity(object):
         self.w = w
 
 
+
 def center(bbox):
     (x,y,w,h) = bbox
     return(x+w//2, y+h//2)
@@ -92,7 +94,6 @@ def get_rois(frame, cal, backSub):
 
     fgMask = frame
 
-
     # original
     fgMask = cv2.blur(fgMask, (8, 8))
     #fgMask = cv2.blur(fgMask, (15, 15))
@@ -100,8 +101,6 @@ def get_rois(frame, cal, backSub):
     fgMask = backSub.apply(fgMask)  # real
 
     fgMask = cv2.bitwise_and(fgMask, fgMask, mask = cal)
-
-    
 
     #origina
     fgMask = cv2.erode(fgMask, np.ones((2, 1), np.uint8), iterations=3)
@@ -296,6 +295,8 @@ def main():
 
     # las player that hitted the ball
     last = 0
+
+    counter = 0
     while(cap.isOpened()):
         # Capture frame-by-frame
         ret, frame = cap.read()
@@ -310,6 +311,8 @@ def main():
         delete = []
 
         clean = frame.copy()
+
+
 
         # assign first players
         for j in range(len(entities)):
@@ -474,6 +477,12 @@ def main():
             cv2.imshow("Ball", ball_image)
         elif mode == 3: # no display
             pass
+        
+        if counter < 10:
+            cv2.imwrite("images/Tracking.png", frame)
+            cv2.imwrite("images/General.png", image_th)
+            cv2.imwrite("images/Ball.png", ball_image)
+            counter+=1
 
 
 

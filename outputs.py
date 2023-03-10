@@ -273,7 +273,7 @@ def main():
 
         f = backSub.apply(frame)
 
-        cv2.imwrite("images/knn.png", f)
+        cv2.imwrite("images/mog.png", f)
         #cv2.imshow("Tracking", frame)
         cv2.imshow("General", frame)
         #cv2.imshow("Ball", ball_image)
